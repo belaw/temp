@@ -1,0 +1,311 @@
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Vector Physics</title>
+	<style>
+	body {
+		margin: 0px;
+		background-color: #008000;
+		color:white;
+	}
+	</style>
+</head>
+<body onload="draw()">
+	<!-- <audio id="sound" src=""></audio> -->
+	<table id="menu" style="background-color:rgba(0,0,0,0.8);position:absolute;left:0px;top:0px;">
+		<tr>
+			<th colspan="2">Toggle this menu with M</th>
+		</tr>
+		<tr>
+			<th>Property</th>
+			<th>Value</th>
+		</tr>
+		<tr>
+			<td>X Position</td>
+			<td><input id="x" type="number" value="100"></td>
+		</tr>
+		<tr>
+			<td>Y Position</td>
+			<td><input id="y" type="number" value="100"></td>
+		</tr>
+		<tr>
+			<td>X Velocity</td>
+			<td><input id="xv" type="number" value="10" step="1"></td>
+		</tr>
+		<tr>
+			<td>Y Velocity</td>
+			<td><input id="yv" type="number" value="-10" step="1"></td>
+		</tr>
+		<tr>
+			<td colspan="2"><input type="button" onclick="spawn();" value="spawn"><input type="checkbox" id="random" checked>random<br><input type="button" onclick="clearcanv();" value="clear"></td>
+		</tr>
+		<tr>
+			<td colspan="2">
+				<input type="checkbox" id="cleara">clear each frame<br>
+				<input type="checkbox" id="wind">wind<br>
+				<input type="checkbox" id="spawnsine">spawn sine
+			</td>
+		</tr>
+		<tr>
+			<th colspan="2">Global Values</th>
+		</tr>
+		<tr>
+			<td>Wind speed</td>
+			<td><input id="windspeed" type="number" value="5" step="1"></td>
+		</tr>
+		<tr>
+			<td colspan="2">arrow keys to control wind</td>
+		</tr>
+		<tr>
+			<td>Bouncyness</td>
+			<td><input id="bouncyness" type="number" value="0.8" step="0.1"></td>
+		</tr>
+		<tr>
+			<td>Gravity</td>
+			<td><input id="grav" type="number" value="1" step="0.1"></td>
+		</tr>
+		<tr>
+			<td>Air resist.</td>
+			<td><input id="resist" type="number" min="0" max="1" value="1" step="0.001"></td>
+		</tr>
+		<tr>
+			<td>Card lifetime</td>
+			<td><input id="life" type="number" value="100" step="1"></td>
+		</tr>
+		<tr>
+			<td>Spawnrate</td>
+			<td><input id="rate" type="number" value="100" step="1"></td>
+		</tr>
+		<tr>
+			<td colspan="2">
+				xvel:<div id="xvelr"></div>
+				yvel:<div id="yvelr"></div>
+			</td>
+		</tr>
+	</table>
+	<canvas id="canvas" width="800" height="600">no</canvas>
+	<script>
+	var canvas 			= document.getElementById('canvas');
+	var context 		= canvas.getContext("2d");
+
+	var frame 			= 0;
+	var img 			= [];
+	for (var i = 0; i <= 66; i++) {
+		img[i] = new Image();
+		img[i].src = "img/CARDS/"+i+".png";
+	};
+	var bouncyness		= document.getElementById("bouncyness").value/100*100;
+	var gravity			= document.getElementById("grav").value/100*100;
+	globalEntityIndex	= [];
+	var menu			= document.getElementById("menu");
+
+	document.onkeydown = function(e) {
+		switch (e.which) {
+			case 77:
+				if(menu.style.display=="none"){
+					menu.style.display="table";
+				}else{
+					menu.style.display="none";
+				}
+				break;
+		}
+	}
+
+	/*
+	The methods of this helper Object handle the keyboard input of the user.
+	They are called by the two event listeners below.
+	*/
+	var Key = {
+		_pressed: {},
+		LEFT: 37,
+		UP: 38,
+		RIGHT: 39,
+		DOWN: 40,
+		SPACE: 32,
+		SHIFT: 16,
+		R: 82,
+		isDown: function(keyCode) {
+			return this._pressed[keyCode];
+		},
+		onKeydown: function(event) {
+			this._pressed[event.keyCode] = true;
+		},
+		onKeyup: function(event) {
+			delete this._pressed[event.keyCode];
+		}
+	};
+
+	//Event listeners mentioned above
+	window.addEventListener('keyup', function(event) {
+		Key.onKeyup(event);
+	}, false);
+	window.addEventListener('keydown', function(event) {
+		Key.onKeydown(event);
+	}, false);
+
+	var mousex = 0;
+	var mousey = 0;
+	var clicked = -1;
+	function getMousePos(evt) {
+		var rect = canvas.getBoundingClientRect();
+		mousex = evt.clientX - rect.left;
+		mousey = evt.clientY - rect.top;
+	}
+	canvas.addEventListener('click',function(evt){
+		clicked*=-1;
+		mousex = evt.clientX - canvas.offsetLeft;
+		mousey = evt.clientY - canvas.offsetTop;
+		document.getElementById("x").value=mousex-Math.round(img[0].width/2);
+		document.getElementById("y").value=mousey-Math.round(img[0].height/2);
+	},false);
+	canvas.addEventListener('mousemove', function(evt) {
+		if(clicked>0){
+			getMousePos(evt);
+			document.getElementById("x").value=mousex-Math.round(img[0].width/2);
+			document.getElementById("y").value=mousey-Math.round(img[0].height/2);
+		}
+	}, false);
+
+	function Vector(x,y){
+		this.x = x;
+		this.y = y;
+	}
+
+	Vector.prototype.setX = function(x) {
+		this.x = x;
+	};
+
+	Vector.prototype.setY = function(y) {
+		this.y = y;
+	};
+
+	Vector.prototype.getX = function() {
+		return this.x;
+	};
+
+	Vector.prototype.getY = function() {
+		return this.y;
+	};
+
+	function Card(x,y,xVel,yVel){
+		this.x = x;
+		this.y = y;
+		this.vel = new Vector(xVel,yVel);
+		this.age = 0;
+		this.image = img[Math.round(Math.random()*66)];
+		globalEntityIndex.push(this);
+	}
+
+	Card.prototype.draw = function(){
+		context.drawImage(this.image,Math.floor(this.x),Math.floor(this.y));
+	}
+
+	// Here is all physics
+	Card.prototype.update = function() {
+
+		// Cards have a life expectancy
+		this.age++;
+		if(this.age>=document.getElementById("life").value/100*100){
+			globalEntityIndex.splice(globalEntityIndex.indexOf(this),1);
+		}
+
+		// Move the card with its velocity (add the current velocity to the cards position)
+		// Collision detection
+		if(this.x+this.vel.x<0){
+			this.x=0;
+			this.vel.x*=-bouncyness;
+		}else if( (this.x+this.image.width)+this.vel.x>canvas.width ){
+			this.x = canvas.width-this.image.width ;
+			this.vel.x*=-bouncyness;
+		}else{
+			this.x+=this.vel.x;
+		}
+
+		if(this.y+this.vel.y<0){
+			this.y=0;
+			this.vel.y*=-bouncyness;
+		}else if( (this.y+this.image.height)+this.vel.y>canvas.height ){
+			this.y = canvas.height-this.image.height ;
+			this.vel.y*=-bouncyness;
+		}else{
+			this.y+=this.vel.y;
+		}
+
+		// Air resistance? idk if im doing it right
+		this.vel.x*=document.getElementById("resist").value/100*100;
+		this.vel.y*=document.getElementById("resist").value/100*100;
+
+		// Apply gravity
+		this.vel.y+=gravity;
+
+		if (Key.isDown(Key.LEFT)) {
+			this.vel.x-=document.getElementById("windspeed").value/100*100;
+		}
+		if (Key.isDown(Key.RIGHT)) {
+			this.vel.x+=document.getElementById("windspeed").value/100*100;
+		}
+		if (Key.isDown(Key.UP)) {
+			this.vel.y-=document.getElementById("windspeed").value/100*100;
+		}
+		if (Key.isDown(Key.DOWN)) {
+			this.vel.y+=document.getElementById("windspeed").value/100*100;
+		}
+		if(document.getElementById("wind").checked==true)
+			this.vel.x+=Math.sin(frame/10);
+
+		if(document.getElementById("wind").checked==true)
+			this.vel.y+=Math.cos(frame/10);
+
+		// Draws the card on the canvas
+		this.draw();
+	};
+
+	clearcanv();
+
+	function draw(){
+		if(globalEntityIndex[0]!=null){
+			document.getElementById("xvelr").innerHTML=globalEntityIndex[0].vel.x;
+			document.getElementById("yvelr").innerHTML=globalEntityIndex[0].vel.y;
+		}
+
+		if(document.getElementById("spawnsine").checked==true)
+			document.getElementById("x").value=( Math.sin(frame/50)*(Math.round(canvas.width/2)-img[0].width) )+(Math.round(canvas.width/2)-img[0].width );
+
+		if(document.getElementById("cleara").checked==true)
+			clearcanv();
+
+		bouncyness = document.getElementById("bouncyness").value/100*100;
+		gravity = document.getElementById("grav").value/100*100;
+		for (var i = globalEntityIndex.length - 1; i >= 0; i--) {
+			globalEntityIndex[i].update();
+		};
+		if(frame%(document.getElementById("rate").value/100*100)==0)
+			spawn();
+		frame++;
+		window.requestAnimationFrame(draw);
+	}
+
+	function spawn(){
+		if(document.getElementById("random").checked==true)
+			new Card(
+				Math.random()*(canvas.width-img[0].width),
+				Math.random()*(canvas.height-img[0].height),
+				(Math.random()*100)-50,
+				(Math.random()*100)-50
+			);
+		else
+			new Card(
+				document.getElementById("x").value/100*100,
+				document.getElementById("y").value/100*100,
+				document.getElementById("xv").value/100*100,
+				document.getElementById("yv").value/100*100
+			);
+	}
+
+	function clearcanv(){
+		canvas.width 	= window.innerWidth;
+		canvas.height = window.innerHeight;
+	}
+	</script>
+</body>
+</html>
